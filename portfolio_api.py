@@ -29,7 +29,8 @@ class OrderHandler(webapp2.RequestHandler):
 
 		if 'application/json' not in self.request.accept:
 			self.response.status = 406
-			self.response.status_message = "Invalid Request, API only supports application/json"
+			message = {'error' : "Invalid Request, API only supports application/json" }
+			self.response.write(json.dumps(message))
 			return
 
 		api_url = "http://dev.markitondemand.com/MODApis/Api/v2/Quote/json?symbol="
@@ -40,16 +41,18 @@ class OrderHandler(webapp2.RequestHandler):
 		
 		if ticker is None:
 			self.response.status = 400
-			self.response.status_message = "Must provide ticker, e.g. NFLX"
+			message = {'error' : "Must provide ticker, e.g. NFLX" }
+			self.response.write(json.dumps(message))
 			return
 		if qty is None or qty <= 0:
 			self.response.status = 400
-			self.response.status_message = "Must provide an integer quantity of shares"
+			message = {'error' : "Must provide an integer quantity of shares" }
+			self.response.write(json.dumps(message))
 			return
 		if o_type not in ['short', 'long']:
 			self.response.status = 400
-			self.response.status_message = "Must provide order type, eg. short|long"
-			self.response.write("Must provide order type, eg. short|long")
+			message = {'error' : "Must provide order type, eg. short|long" }
+			self.response.write(json.dumps(message))
 			return
 
 		if 'username' in kwargs:
@@ -58,14 +61,16 @@ class OrderHandler(webapp2.RequestHandler):
 			user = u_key.get()
 			if user is None:
 				self.response.status = 400
-				self.response.status_message ="User doesn't exist. Make user first."
+				message = {'error' : "User doesn't exist. Make user first." }
+				self.response.write(json.dumps(message))
 				return
 
 			req = urllib2.Request(api_url + ticker)
 			result = json.load(urllib2.urlopen(req))
 
 			if 'Message' in result:
-				self.response.write("Bad request, stock ticker invalid")
+				message = {'error': "Bad request. Stock ticker invalid."}
+				self.response.write(json.dumps(message))
 			else:
 				order = Order(ticker = result['Symbol'],
 					name = result['Name'],
@@ -89,7 +94,8 @@ class OrderHandler(webapp2.RequestHandler):
 		""" Displays information about an order """
 		if 'application/json' not in self.request.accept:
 			self.response.status = 406
-			self.response.status_message = "Invalid Request, API only supports application/json"
+			message = {'error' : "Invalid Request, API only supports application/json" }
+			self.response.write(json.dumps(message))
 			return
 
 		if 'order' in kwargs:
@@ -121,11 +127,6 @@ class OrderHandler(webapp2.RequestHandler):
 			self.response.write(json.dumps(results))
 
 
-	def delete(self, **kwargs):
-		
-
-
-
 class UserHandler(webapp2.RequestHandler):
 	def post(self):
 		""" Creates a User entity
@@ -136,6 +137,7 @@ class UserHandler(webapp2.RequestHandler):
 		"""
 		if 'application/json' not in self.request.accept:
 			self.response.status = 406
+			message = {'error' : "Invalid Request, API only supports application/json" }
 			self.response.status_message = "Invalid Request, API only supports application/json"
 			return
 		
@@ -147,11 +149,13 @@ class UserHandler(webapp2.RequestHandler):
 			user = User(key=u_key)
 			if u_key.get() is not None:
 				self.response.status = 400
-				self.response.write("Duplicate username. Please choose another username.")
+				message = {'error' : "Duplicate username. Please choose another username."}
+				self.response.write(json.dumps(message))
 				return
 		else:
 			self.response.status = 400
-			self.response.write("Invalid Request, username is required")
+			message = {'error' : "Invalid Request, username is required"}
+			self.response.write(json.dumps(message))
 			return
 		if email:
 			user.email = email
@@ -163,7 +167,8 @@ class UserHandler(webapp2.RequestHandler):
 	def get(self, **kwargs):
 		if 'application/json' not in self.request.accept:
 			self.response.status = 406
-			self.response.status_message = "Invalid Request, API only supports application/json"
+			message = {'error' : "Invalid Request, API only supports application/json" }
+			self.response.write(json.dumps(message))
 			return
 
 		if 'id' in kwargs:
@@ -178,7 +183,8 @@ class UserHandler(webapp2.RequestHandler):
 				self.response.write(json.dumps(out))
 			else:
 				self.response.status = 404
-				self.response.status_message ="No User found by that username."
+				message = {'error' : "No User found by that username."}
+				self.response.write(json.dumps(message))
 		else:
 			q = User.query()
 			keys = q.fetch(keys_only=True)
@@ -192,7 +198,8 @@ class UserHandler(webapp2.RequestHandler):
 		"""
 		if 'application/json' not in self.request.accept:
 			self.response.status = 406
-			self.response.status_message = "Invalid Request, API only supports application/json"
+			message = {'error' : "Invalid Request, API only supports application/json" }
+			self.response.write(json.dumps(message)) 
 			return
 
 		email = self.request.get('email', default_value=None)
@@ -201,7 +208,8 @@ class UserHandler(webapp2.RequestHandler):
 			username = kwargs['username']
 		elif username is None:
 			self.response.status = 400
-			self.response.status_message = "Invalid Request, username is required"
+			message = {'error' : "Invalid Request, username is required" }
+			self.response.write(json.dumps(message)) 
 			return
 		u_key = ndb.Key(User, username)
 		user = User(key=u_key)
@@ -222,14 +230,16 @@ class UserHandler(webapp2.RequestHandler):
 		"""Deletes User Entity """
 		if 'application/json' not in self.request.accept:
 			self.response.status = 406
-			self.response.status_message = "Invalid Request, API only supports application/json"
+			message = {'error' : "Invalid Request, API only supports application/json" }
+			self.response.write(json.dumps(message))
 			return
 		
 		if 'username' in kwargs:
 			username = kwargs['username']
 		elif username is None:
 			self.response.status = 400
-			self.response.status_message = "Invalid Request, username is required"
+			message = {'error' : "Invalid Request, username is required"}
+			self.response.write(json.dumps(message))
 			return
 		u_key = ndb.Key(User, username)
 		user = u_key.get()
