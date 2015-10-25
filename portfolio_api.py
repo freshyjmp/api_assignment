@@ -2,16 +2,17 @@ import webapp2
 from google.appengine.ext import ndb
 import json
 import urllib2
+import datetime
 
 class User(ndb.Model):
 	email = ndb.StringProperty()
 	last_updated = ndb.DateProperty()
-	cash = ndb.FloatProperty()
+	cash = ndb.FloatProperty(default=100000.00)
 	balance = ndb.FloatProperty()
 	rate_of_return = ndb.FloatProperty()
-	portfolio = ndb.KeyProperty(repeated=True)
+	portfolio = ndb.IntegerProperty(repeated=True)
 
-class Orders(ndb.Model):
+class Order(ndb.Model):
 	ticker = ndb.StringProperty()
 	name = ndb.StringProperty()
 	o_type = ndb.StringProperty()
@@ -23,7 +24,7 @@ class Orders(ndb.Model):
 
 
 class OrderHandler(webapp2.RequestHandler):
-	def post(self):
+	def post(self, **kwargs):
 		""" Creates an Order entity and adds it to the user's portfolio """
 
 		if 'application/json' not in self.request.accept:
@@ -38,27 +39,90 @@ class OrderHandler(webapp2.RequestHandler):
 		o_type = self.request.get('o_type', default_value=None)
 		
 		if ticker is None:
-			self.reponse.status = 400
+			self.response.status = 400
 			self.response.status_message = "Must provide ticker, e.g. NFLX"
 			return
-		if qty is None:
+		if qty is None or qty <= 0:
 			self.response.status = 400
 			self.response.status_message = "Must provide an integer quantity of shares"
 			return
-		if o_type is None:
+		if o_type not in ['short', 'long']:
 			self.response.status = 400
-			self.response.status_mesage = "Must provide order type, eg. short|long"
+			self.response.status_message = "Must provide order type, eg. short|long"
+			self.response.write("Must provide order type, eg. short|long")
 			return
 
 		if 'username' in kwargs:
 			username = kwargs['username']
 			u_key = ndb.Key(User, username)
 			user = u_key.get()
-			if user is not None:
+			if user is None:
+				self.response.status = 400
+				self.response.status_message ="User doesn't exist. Make user first."
+				return
 
+			req = urllib2.Request(api_url + ticker)
+			result = json.load(urllib2.urlopen(req))
+
+			if 'Message' in result:
+				self.response.write("Bad request, stock ticker invalid")
 			else:
-				self.response.status = 404
-				self.response.status_message ="No User found by that username."
+				order = Order(ticker = result['Symbol'],
+					name = result['Name'],
+					o_type = o_type,
+					qty = int(qty),
+					open_date = datetime.datetime.now(),
+					price = float(result['LastPrice']),
+					active = True)
+
+				o_key = order.put()
+				out = order.to_dict()
+				out['open_date'] = str(out['open_date'])
+				cash_change = order.qty * (1 if order.o_type == "short" else -1 ) * order.price
+
+				user.cash = user.cash + cash_change
+				user.portfolio.append(o_key.id())
+				user.put()
+				self.response.write(json.dumps(out))
+
+	def get(self, **kwargs):
+		""" Displays information about an order """
+		if 'application/json' not in self.request.accept:
+			self.response.status = 406
+			self.response.status_message = "Invalid Request, API only supports application/json"
+			return
+
+		if 'order' in kwargs:
+			o_id = kwargs['order']
+			o_key = ndb.Key(Order, int(o_id))
+			order = o_key.get()
+			out = order.to_dict()
+			out['open_date'] = str(out['open_date'])
+			self.response.write(json.dumps(out))
+		elif 'username' in kwargs:
+			username = kwargs['username']
+			u_key = ndb.Key(User, username)
+			user = u_key.get()
+			if user is not None:
+				orders = user.portfolio
+				q = Order.query()
+				results=[]
+				for o_id in orders:
+					o_key = ndb.Key(Order, int(o_id))
+					order = o_key.get()
+					out = order.to_dict()
+					out['open_date'] = str(out['open_date'])
+					results.append(out)
+				self.response.write(json.dumps(results))
+		else:
+			q = Orders.query()
+			keys = q.fetch(keys_only=True)
+			results = {'orders': [x.id() for x in keys]}
+			self.response.write(json.dumps(results))
+
+
+	def delete(self, **kwargs):
+		
 
 
 
@@ -82,12 +146,12 @@ class UserHandler(webapp2.RequestHandler):
 			u_key = ndb.Key(User, username)
 			user = User(key=u_key)
 			if u_key.get() is not None:
-				self.restponse.status = 400
-				self.response.status_message = "Duplicate username. Please choose another username."
+				self.response.status = 400
+				self.response.write("Duplicate username. Please choose another username.")
 				return
 		else:
 			self.response.status = 400
-			self.response.status_message = "Invalid Request, username is required"
+			self.response.write("Invalid Request, username is required")
 			return
 		if email:
 			user.email = email
@@ -188,3 +252,8 @@ app.router.add(webapp2.Route(r'/user', UserHandler))
 app.router.add(webapp2.Route(r'/user/', UserHandler))
 app.router.add(webapp2.Route(r'/user/<id:[0-9]+><:/?>', UserHandler))
 app.router.add(webapp2.Route(r'/user/<username:[a-z]+><:/?>', UserHandler))
+app.router.add(webapp2.Route(r'/user/<username:[a-z]+>/orders', OrderHandler))
+app.router.add(webapp2.Route(r'/user/<username:[a-z]+>/orders/', OrderHandler))
+app.router.add(webapp2.Route(r'/user/<username:[a-z]+>/orders/<order:[0-9]+><:/?>', OrderHandler))
+app.router.add(webapp2.Route(r'/order/<order:[0-9]+><:/?>', OrderHandler))
+
